@@ -8,13 +8,29 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 echo "Running non-interactive dotfiles installation..."
 
-# Use rsync to copy all dotfiles to the home directory.
-rsync --exclude ".git/" \
-	--exclude ".DS_Store" \
-	--exclude "bootstrap.sh" \
-	--exclude "install.sh" \
-	--exclude "README.md" \
-	--exclude "LICENSE-MIT.txt" \
-	-avh --no-perms . ~
+# Use an array to build the list of rsync arguments. This is safer than a plain string.
+rsync_args=(
+    --exclude ".git/"
+    --exclude ".DS_Store"
+    --exclude "bootstrap.sh"
+    --exclude "install.sh"
+    --exclude "README.md"
+    --exclude "LICENSE-MIT.txt"
+    -avh --no-perms
+)
 
-echo "Dotfiles have been copied to the home directory."
+# --- Conditional Check ---
+# If we are in a dev container AND a .gitconfig file already exists in the home directory...
+if [[ -n "$REMOTE_CONTAINERS" && -f "$HOME/.gitconfig" ]]; then
+    echo "Dev container detected and existing .gitconfig found. Preserving it."
+    # ...then add an extra exclude rule for .gitconfig to the arguments.
+    rsync_args+=(--exclude ".gitconfig")
+fi
+# -------------------------
+
+echo "Syncing dotfiles to the home directory..."
+
+# Execute rsync, expanding the array of arguments safely.
+rsync "${rsync_args[@]}" . ~
+
+echo "Dotfiles installation complete."
