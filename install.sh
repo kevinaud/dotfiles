@@ -20,8 +20,8 @@ rsync_args=(
 )
 
 # --- Conditional Check ---
-# If we are in a dev container AND a .gitconfig file already exists in the home directory...
-if [[ -n "$REMOTE_CONTAINERS" && -f "$HOME/.gitconfig" ]]; then
+# If we are in a dev container...
+if [[ -n "$REMOTE_CONTAINERS" ]]; then
     echo "Dev container detected and existing .gitconfig found. Preserving it."
     # ...then add an extra exclude rule for .gitconfig to the arguments.
     rsync_args+=(--exclude ".gitconfig")
