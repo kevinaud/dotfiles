@@ -67,13 +67,13 @@ You could also use `~/.extra` to override settings, functions and aliases from m
 
 ### Install packages with APT
 
-When setting up a new Ubuntu or WSL environment, you may want to install the common packages defined in `apt-install.sh`:
+When setting up a new Ubuntu or WSL environment, you may want to install the common packages defined in `scripts/apt-install.sh`:
 
 ```bash
-./apt-install.sh
+./scripts/apt-install.sh
 ```
 
-Some of the functionality of these dotfiles depends on packages installed by `apt-install.sh`. If you don’t plan to run it, review the script and install any critical tools manually (for example, Bash and Git completion utilities).
+Some of the functionality of these dotfiles depends on packages installed by `scripts/apt-install.sh`. If you don’t plan to run it, review the script and install any critical tools manually (for example, Bash and Git completion utilities).
 
 ## Feedback
 

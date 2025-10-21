@@ -56,8 +56,8 @@ sudo apt install -y woff2
 # --- CTF / Security Tools ---
 # Note: Some package names may differ slightly from their Homebrew versions.
 sudo apt install -y aircrack-ng binutils binwalk dns2tcp fcrackzip \
-foremost hydra john knockd netpbm nmap pngcheck socat sqlmap \
-tcpflow tcpreplay tcptrace ucspi-tcp xpdf xz-utils
+	foremost hydra john knockd netpbm nmap pngcheck socat sqlmap \
+	tcpflow tcpreplay tcptrace ucspi-tcp xpdf xz-utils
 
 # The package 'bfg' is not in the standard Ubuntu repositories.
 # It typically needs to be downloaded and run as a Java .jar file manually.
@@ -65,7 +65,7 @@ tcpflow tcpreplay tcptrace ucspi-tcp xpdf xz-utils
 
 # --- Other Useful Binaries ---
 sudo apt install -y ack git git-lfs ghostscript imagemagick lua5.3 lynx \
-p7zip-full pigz pv rename rlwrap tree vbindiff zopfli
+	p7zip-full pigz pv rename rlwrap tree vbindiff zopfli shfmt
 
 # ssh-copy-id is part of the openssh-client package, already installed above.
 
