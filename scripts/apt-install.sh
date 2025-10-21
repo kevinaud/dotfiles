@@ -6,6 +6,14 @@
 sudo apt update
 sudo apt upgrade -y
 
+# --- Locale configuration ---
+# Ensure the en_US.UTF-8 locale exists so tools referencing it (e.g. Git) behave.
+if ! locale -a | grep -q '^en_US.utf8$'; then
+	sudo sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+	sudo locale-gen en_US.UTF-8
+fi
+sudo update-locale LANG=en_US.UTF-8
+
 # --- Git (latest stable) ---
 # Install the Git Core PPA so we always get the newest stable Git build.
 sudo apt install -y software-properties-common
