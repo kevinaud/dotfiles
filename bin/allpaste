@@ -34,11 +34,30 @@ EOF
     exit 1
 }
 
-# --- Helper function to copy to host clipboard ---
-host_copy() {
-    # This function uses the OSC 52 escape sequence to copy its standard input
-    # to the host's clipboard, via the VS Code terminal.
-    base64 -w0 | xargs -r printf '\e]52;c;%s\a'
+# --- Smart copy function for different environments ---
+copy_to_clipboard() {
+    # 1. Check for VS Code Dev Container environment first. It's the most specific
+    #    and doesn't have access to clip.exe.
+    if [[ -n "$REMOTE_CONTAINERS" ]]; then
+        # Use OSC 52 escape sequence, redirecting to /dev/tty to hide output.
+        base64 -w0 | awk '{printf "\e]52;c;%s\a", $0}' > /dev/tty
+    # 2. If not in a container, check for WSL's native clip.exe. This is the
+    #    most reliable method for any WSL session (in VSCode or Windows Terminal).
+    elif command -v clip.exe &>/dev/null; then
+        # Use Windows' clipboard executable
+        clip.exe
+    # 3. As a fallback for non-WSL VS Code remotes (e.g., SSH), check TERM_PROGRAM.
+    elif [[ "$TERM_PROGRAM" == "vscode" ]]; then
+        # Use OSC 52 as a fallback for other VS Code remote types.
+        base64 -w0 | awk '{printf "\e]52;c;%s\a", $0}' > /dev/tty
+    # 4. Fallback for native Linux desktop environments.
+    elif command -v xclip &>/dev/null; then
+        xclip -selection clipboard
+    else
+        echo "Error: No suitable clipboard command found." >&2
+        echo "Please run this in a VS Code terminal, a WSL terminal, or install xclip." >&2
+        return 1
+    fi
 }
 
 # --- Initial variable setup ---
@@ -185,17 +204,21 @@ fi
 
 # If there is text content, copy it and print the success message for copied files.
 if [[ -n "$output" ]]; then
-    char_count=${#output}
-    file_count=${#final_list[@]}
-    echo -n "$output" | host_copy
+    if echo -n "$output" | copy_to_clipboard; then
+        char_count=${#output}
+        file_count=${#final_list[@]}
 
-    echo "Success! Copied $file_count file(s) (${char_count} characters) to the host clipboard." >&2
-    echo >&2
-    echo "Included text files:" >&2
-    mapfile -t sorted_final_list < <(printf "%s\n" "${final_list[@]}" | sort)
-    for file in "${sorted_final_list[@]}"; do
-        echo "- $file" >&2
-    done
+        echo "Success! Copied $file_count file(s) (${char_count} characters) to the host clipboard." >&2
+        echo >&2
+        echo "Included text files:" >&2
+        mapfile -t sorted_final_list < <(printf "%s\n" "${final_list[@]}" | sort)
+        for file in "${sorted_final_list[@]}"; do
+            echo "- $file" >&2
+        done
+    else
+        # This message will be shown if copy_to_clipboard failed
+        echo "Could not copy content to clipboard." >&2
+    fi
 elif [[ ${#final_list[@]} -eq 0 ]]; then
     echo "No text files found to copy." >&2
 fi
@@ -209,5 +232,3 @@ if [[ ${#binary_files_excluded[@]} -gt 0 ]]; then
         echo "- $file" >&2
     done
 fi
-
-
