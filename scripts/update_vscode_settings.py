@@ -8,9 +8,9 @@ import re
 import sys
 
 DEFAULTS = {
-    "dotfiles.repository": "git@github.com:kevinaud/dotfiles.git",
+    "dotfiles.repository": "kevinaud/dotfiles",
     "dotfiles.targetPath": "~/dotfiles",
-    "dotfiles.installCommand": "set -- -f; source bootstrap.sh",
+    "dotfiles.installCommand": "install.sh",
 }
 
 COMMENT_PATTERN = re.compile(r"//.*?$|/\*.*?\*/", re.DOTALL | re.MULTILINE)
