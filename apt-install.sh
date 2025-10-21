@@ -6,6 +6,12 @@
 sudo apt update
 sudo apt upgrade -y
 
+# --- Git (latest stable) ---
+# Install the Git Core PPA so we always get the newest stable Git build.
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:git-core/ppa
+sudo apt update
+
 # --- Core GNU Utilities ---
 # On Ubuntu, the core utilities (coreutils, findutils, sed, grep) are already
 # the modern GNU versions. The original script installs these to replace the
@@ -37,12 +43,12 @@ sudo apt install -y vim openssh-client screen php-cli libgmp-dev
 # --- Font Tools ---
 # These may require adding a PPA if not in the default repos,
 # but are often available directly.
-sudo apt install -y woff2 sfnt2woff
+sudo apt install -y woff2
 
 # --- CTF / Security Tools ---
 # Note: Some package names may differ slightly from their Homebrew versions.
-sudo apt install -y aircrack-ng binutils binwalk dex2jar dns2tcp fcrackzip \
-foremost hashpump hydra john knockd netpbm nmap pngcheck socat sqlmap \
+sudo apt install -y aircrack-ng binutils binwalk dns2tcp fcrackzip \
+foremost hydra john knockd netpbm nmap pngcheck socat sqlmap \
 tcpflow tcpreplay tcptrace ucspi-tcp xpdf xz-utils
 
 # The package 'bfg' is not in the standard Ubuntu repositories.
