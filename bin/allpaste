@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+
+# --- Usage function ---
+usage() {
+    cat <<EOF
+copy-context: A script to recursively find files, format their content as a
+Markdown block, and copy it to the host clipboard for use with AI chatbots.
+
+USAGE:
+    copy-context [OPTIONS]
+
+OPTIONS:
+    --include=<substrings>    Comma-separated list of substrings to include in file paths.
+                              Example: --include=.js,.ts
+
+    --exclude=<substrings>    Comma-separated list of substrings to exclude from file paths.
+                              Example: --exclude=node_modules,dist
+
+    --rinclude=<regex>        A single regular expression to include file paths.
+                              Example: --rinclude="\.ya?ml$"
+
+    --rexclude=<regex>        A single regular expression to exclude file paths.
+                              Example: --rexclude="/test/|/spec/"
+
+    --no-gitignore            Disable git-awareness and .gitignore filtering.
+                              Finds all files (except .git dir), even if in a git repository.
+
+    -h, --help                Display this help message.
+
+NOTES:
+    - You cannot use --include and --rinclude at the same time.
+    - You cannot use --exclude and --rexclude at the same time.
+EOF
+    exit 1
+}
+
+# --- Smart copy function for different environments ---
+copy_to_clipboard() {
+    # 1. Check for VS Code Dev Container environment first. It's the most specific
+    #    and doesn't have access to clip.exe.
+    if [[ -n "$REMOTE_CONTAINERS" ]]; then
+        # Use OSC 52 escape sequence, redirecting to /dev/tty to hide output.
+        base64 -w0 | awk '{printf "\e]52;c;%s\a", $0}' > /dev/tty
+    # 2. If not in a container, check for WSL's native clip.exe. This is the
+    #    most reliable method for any WSL session (in VSCode or Windows Terminal).
+    elif command -v clip.exe &>/dev/null; then
+        # Use Windows' clipboard executable
+        clip.exe
+    # 3. As a fallback for non-WSL VS Code remotes (e.g., SSH), check TERM_PROGRAM.
+    elif [[ "$TERM_PROGRAM" == "vscode" ]]; then
+        # Use OSC 52 as a fallback for other VS Code remote types.
+        base64 -w0 | awk '{printf "\e]52;c;%s\a", $0}' > /dev/tty
+    # 4. Fallback for native Linux desktop environments.
+    elif command -v xclip &>/dev/null; then
+        xclip -selection clipboard
+    else
+        echo "Error: No suitable clipboard command found." >&2
+        echo "Please run this in a VS Code terminal, a WSL terminal, or install xclip." >&2
+        return 1
+    fi
+}
+
+# --- Initial variable setup ---
+INCLUDE_SUBSTRINGS=""
+EXCLUDE_SUBSTRINGS=""
+INCLUDE_REGEX=""
+EXCLUDE_REGEX=""
+USE_GITIGNORE=true
+
+# --- Argument Parsing ---
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --include=*) INCLUDE_SUBSTRINGS="${1#*=}" ;;
+        --exclude=*) EXCLUDE_SUBSTRINGS="${1#*=}" ;;
+        --rinclude=*) INCLUDE_REGEX="${1#*=}" ;;
+        --rexclude=*) EXCLUDE_REGEX="${1#*=}" ;;
+        --no-gitignore) USE_GITIGNORE=false ;;
+        -h|--help) usage ;;
+        *) echo "Unknown parameter passed: $1"; usage ;;
+    esac
+    shift
+done
+
+# --- Validation ---
+if [[ -n "$INCLUDE_SUBSTRINGS" && -n "$INCLUDE_REGEX" ]]; then
+    echo "Error: Cannot use --include and --rinclude at the same time." >&2
+    usage
+fi
+if [[ -n "$EXCLUDE_SUBSTRINGS" && -n "$EXCLUDE_REGEX" ]]; then
+    echo "Error: Cannot use --exclude and --rexclude at the same time." >&2
+    usage
+fi
+
+
+# --- Determine if in a git repo ---
+IS_GIT_REPO=false
+if [[ "$USE_GITIGNORE" == true ]] && git rev-parse --is-inside-work-tree &>/dev/null; then
+    IS_GIT_REPO=true
+    GIT_ROOT=$(git rev-parse --show-toplevel)
+    REPO_NAME=$(basename "$GIT_ROOT")
+fi
+
+# --- File Discovery ---
+file_list=()
+if [[ "$IS_GIT_REPO" == true ]]; then
+    # Use git ls-files to respect .gitignore.
+    # -c for cached, -o for other (untracked). --exclude-standard respects .gitignore.
+    mapfile -t file_list < <(cd "$GIT_ROOT" && git ls-files -co --exclude-standard)
+else
+    # Use find for non-git directories or when --no-gitignore is specified.
+    # Prune the .git directory to avoid including its contents.
+    mapfile -d '' file_list < <(find . -path ./.git -prune -o -type f -print0)
+fi
+
+# --- Filtering by user arguments ---
+filtered_list=()
+for file in "${file_list[@]}"; do
+    # In non-git mode, find returns "./file", we clean that up.
+    clean_file=${file#./}
+
+    # Apply filters
+    keep=true
+    if [[ -n "$INCLUDE_SUBSTRINGS" ]]; then
+        # Must match one of the substrings
+        if ! echo "$clean_file" | grep -qE "$(echo "$INCLUDE_SUBSTRINGS" | sed 's/,/|/g')"; then
+            keep=false
+        fi
+    fi
+    if [[ -n "$EXCLUDE_SUBSTRINGS" ]]; then
+        # Must NOT match any of the substrings
+        if echo "$clean_file" | grep -qE "$(echo "$EXCLUDE_SUBSTRINGS" | sed 's/,/|/g')"; then
+            keep=false
+        fi
+    fi
+    if [[ -n "$INCLUDE_REGEX" ]]; then
+        if ! echo "$clean_file" | grep -qE "$INCLUDE_REGEX"; then
+            keep=false
+        fi
+    fi
+    if [[ -n "$EXCLUDE_REGEX" ]]; then
+        if echo "$clean_file" | grep -qE "$EXCLUDE_REGEX"; then
+            keep=false
+        fi
+    fi
+
+    if [[ "$keep" == true ]]; then
+        filtered_list+=("$clean_file")
+    fi
+done
+
+# --- Binary File Filtering ---
+# From the list of candidates, filter out any files that appear to be binary.
+final_list=()
+binary_files_excluded=()
+for file in "${filtered_list[@]}"; do
+    full_path_for_check=""
+    if [[ "$IS_GIT_REPO" == true ]]; then
+        full_path_for_check="$GIT_ROOT/$file"
+    else
+        full_path_for_check="$file"
+    fi
+
+    # Use grep -I to heuristically check for binary content. It returns success (0) for text files.
+    # If it fails, we consider it binary and add it to the excluded list.
+    if [[ ! -s "$full_path_for_check" || $(grep -IL . "$full_path_for_check"; echo $?) -eq 0 ]]; then
+        final_list+=("$file")
+    else
+        binary_files_excluded+=("$file")
+    fi
+done
+
+# --- Content Aggregation and Formatting ---
+output=""
+for file in "${final_list[@]}"; do
+    header=""
+    full_path_for_cat=""
+
+    if [[ "$IS_GIT_REPO" == true ]]; then
+        header="### $REPO_NAME/$file"
+        full_path_for_cat="$GIT_ROOT/$file"
+    else
+        # Use realpath to get the full absolute path
+        abs_path=$(realpath "$file")
+        header="### $abs_path"
+        full_path_for_cat="$abs_path"
+    fi
+
+    # Final check if file exists and is readable before trying to cat it
+    if [[ -f "$full_path_for_cat" && -r "$full_path_for_cat" ]]; then
+        # Use direct string concatenation with explicit newlines ($'\n')
+        output+="${header}"$'\n'
+        output+='```'$'\n'
+        output+=$(cat "$full_path_for_cat")
+        output+=$'\n''```'$'\n\n'
+    fi
+done
+
+# --- Copy to Clipboard and Summarize ---
+# First, check if any files were found at all after all filtering.
+if [[ ${#final_list[@]} -eq 0 && ${#binary_files_excluded[@]} -eq 0 ]]; then
+    echo "No files found matching the criteria." >&2
+    exit 0
+fi
+
+# If there is text content, copy it and print the success message for copied files.
+if [[ -n "$output" ]]; then
+    if echo -n "$output" | copy_to_clipboard; then
+        char_count=${#output}
+        file_count=${#final_list[@]}
+
+        echo "Success! Copied $file_count file(s) (${char_count} characters) to the host clipboard." >&2
+        echo >&2
+        echo "Included text files:" >&2
+        mapfile -t sorted_final_list < <(printf "%s\n" "${final_list[@]}" | sort)
+        for file in "${sorted_final_list[@]}"; do
+            echo "- $file" >&2
+        done
+    else
+        # This message will be shown if copy_to_clipboard failed
+        echo "Could not copy content to clipboard." >&2
+    fi
+elif [[ ${#final_list[@]} -eq 0 ]]; then
+    echo "No text files found to copy." >&2
+fi
+
+# If any binary files were skipped, list them alphabetically.
+if [[ ${#binary_files_excluded[@]} -gt 0 ]]; then
+    echo >&2
+    echo "Excluded binary files:" >&2
+    mapfile -t sorted_binary_excluded < <(printf "%s\n" "${binary_files_excluded[@]}" | sort)
+    for file in "${sorted_binary_excluded[@]}"; do
+        echo "- $file" >&2
+    done
+fi
