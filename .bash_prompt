@@ -107,12 +107,12 @@ dotfiles_prompt__host_style() {
 }
 
 dotfiles_prompt_build_ps1() {
-	local user_style host_style git_segment;
+	local user_style host_style git_command;
 	user_style="$(dotfiles_prompt__user_style)";
 	host_style="$(dotfiles_prompt__host_style)";
-	git_segment="$(dotfiles_prompt_git_segment "\[${white}\] on \[${violet}\]" "\[${blue}\]")";
+	printf -v git_command '\\$(dotfiles_prompt_git_segment "%s" "%s")' "\[${white}\] on \[${violet}\]" "\[${blue}\]";
 
-	printf '%s' "\[\033]0;\W\007\]\[${bold}\]\n\[${user_style}\]\u\[${white}\] at \[${host_style}\]\h\[${white}\] in \[${green}\]\w${git_segment}\n\[${white}\]\$ \[${reset}\]";
+	printf '%s' "\[\033]0;\W\007\]\[${bold}\]\n\[${user_style}\]\u\[${white}\] at \[${host_style}\]\h\[${white}\] in \[${green}\]\w${git_command}\n\[${white}\]\$ \[${reset}\]";
 }
 
 dotfiles_prompt_apply() {
