@@ -179,13 +179,13 @@ main() {
 	check_prerequisites
 	configure_windows_gcm
 	configure_git_profile
-	install_github_cli
-	login_to_github_cli
+	# install_github_cli
+	# login_to_github_cli
 
 	echo "------------------------------------------------------------"
 	success "All done! Your WSL environment is fully configured."
 	info "Git commands will use your Windows credentials automatically."
-	info "GitHub CLI ('gh') is installed and ready to use."
+	# info "GitHub CLI ('gh') is installed and ready to use."
 	echo "------------------------------------------------------------"
 }
 
