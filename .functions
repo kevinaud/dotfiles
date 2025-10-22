@@ -165,10 +165,19 @@ function o() {
 	fi;
 }
 
-# `tre` is a shorthand for `tree` with hidden files and color enabled, ignoring
-# the `.git` directory, listing directories first. The output gets piped into
-# `less` with options to preserve color and line numbers, unless the output is
-# small enough for one screen.
+# `tre` is a shorthand for `tree` that correctly handles options and
+# uses color for terminals but plain text for pipes.
 function tre() {
-	tree -aC -I '.git|node_modules|bower_components' --dirsfirst "$@" | less -FRNX;
+	# Use an array to store options to avoid word-splitting issues.
+	# Each element in the array is a distinct argument.
+	local options=("-a" "--dirsfirst" "-I" ".git|node_modules|bower_components")
+
+	# Check if standard output (file descriptor 1) is a terminal
+	if [ -t 1 ]; then
+		# If it's a terminal, add the color flag and execute
+		tree -C "${options[@]}" "$@"
+	else
+		# If it's being piped, execute without the color flag
+		tree "${options[@]}" "$@"
+	fi
 }
