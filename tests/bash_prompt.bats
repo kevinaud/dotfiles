@@ -105,7 +105,8 @@ setup_repo() {
   USER='kevin'
   unset SSH_TTY
   ps1="$(dotfiles_prompt_build_ps1)"
-  [[ "${ps1}" == *'\$(dotfiles_prompt_git_segment'* ]]
+  local git_pattern='$(dotfiles_prompt_git_segment'
+  [[ "${ps1}" == *"${git_pattern}"* ]]
   [[ "${ps1}" == *"\[ORANGE\]\\u"* ]]
   [[ "${ps1}" == *"\[YELLOW\]\\h"* ]]
   [[ "${ps1}" == *"\[GREEN\]\\w"* ]]
