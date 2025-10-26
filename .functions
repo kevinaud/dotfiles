@@ -181,3 +181,8 @@ function tre() {
 		tree "${options[@]}" "$@"
 	fi
 }
+
+# clipboard
+c() {
+  iconv -f UTF-8 -t UTF-16LE | /mnt/c/Windows/System32/clip.exe
+}
