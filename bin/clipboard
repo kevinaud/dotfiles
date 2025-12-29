@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+# --- Smart copy function extracted from copy-context ---
+copy_to_clipboard() {
+    # 1. WSL check.
+    if command -v clip.exe &>/dev/null; then
+        clip.exe
+        return $?
+    fi
+
+    # 2. VS Code Dev Container OR standard VS Code SSH/Integrated terminal.
+    # Both support OSC 52.
+    if [[ -n "$REMOTE_CONTAINERS" || "$TERM_PROGRAM" == "vscode" ]]; then
+        {
+            printf "\033]52;c;"
+            base64 | tr -d '\n'
+            printf "\a"
+        } >/dev/tty
+        return 0
+    fi
+
+    # 3. Fallback for native Linux desktop environments (X11)
+    if command -v xclip &>/dev/null; then
+        xclip -selection clipboard
+        return $?
+    fi
+
+    # 4. Fallback for Wayland
+    if command -v wl-copy &>/dev/null; then
+        wl-copy
+        return $?
+    fi
+
+    echo "Error: No suitable clipboard command found." >&2
+    return 1
+}
+
+# Check if stdin is a terminal (meaning no data was piped in)
+if [[ -t 0 ]]; then
+    echo "Usage: echo 'data' | clipboard"
+    echo "Error: No input detected on stdin."
+    exit 1
+fi
+
+# Execute the copy
+copy_to_clipboard

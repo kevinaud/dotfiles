@@ -1,76 +1,40 @@
 #!/usr/bin/env bash
 
+# Find the directory where this script lives to locate the clipboard helper
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+CLIPBOARD_HELPER="$SCRIPT_DIR/clipboard"
+
 # --- Usage function ---
 usage() {
-        cat <<EOF
-copy-context: A script to recursively find files, format their content as a
+    cat <<EOF
+allpaste: A script to recursively find files, format their content as a
 Markdown block, and copy it to the host clipboard for use with AI chatbots.
 
 USAGE:
-    copy-context [OPTIONS]
+    allpaste [OPTIONS]
 
-    --output=<file>          Write aggregated Markdown to <file> instead of copying
-                             to the clipboard. Parent directories will be created.
+    --output=<file>        Write aggregated Markdown to <file> instead of copying
+                           to the clipboard. Parent directories will be created.
 
 OPTIONS:
-    --include=<substrings>    Comma-separated list of substrings to include in file paths.
-                              Example: --include=.js,.ts
+    --include=<substrings>   Comma-separated list of substrings to include in file paths.
+                             Example: --include=.js,.ts
 
-    --exclude=<substrings>    Comma-separated list of substrings to exclude from file paths.
-                              Example: --exclude=node_modules,dist
+    --exclude=<substrings>   Comma-separated list of substrings to exclude from file paths.
+                             Example: --exclude=node_modules,dist
 
-    --rinclude=<regex>        A single regular expression to include file paths.
-                              Example: --rinclude="\.ya?ml$"
+    --rinclude=<regex>       A single regular expression to include file paths.
+                             Example: --rinclude="\.ya?ml$"
 
-    --rexclude=<regex>        A single regular expression to exclude file paths.
-                              Example: --rexclude="/test/|/spec/"
+    --rexclude=<regex>       A single regular expression to exclude file paths.
+                             Example: --rexclude="/test/|/spec/"
 
-    --no-gitignore            Disable git-awareness and .gitignore filtering.
-                              Finds all files (except .git dir), even if in a git repository.
+    --no-gitignore           Disable git-awareness and .gitignore filtering.
+                             Finds all files (except .git dir), even if in a git repository.
 
-    -h, --help                Display this help message.
-
-NOTES:
-    - You cannot use --include and --rinclude at the same time.
-    - You cannot use --exclude and --rexclude at the same time.
+    -h, --help               Display this help message.
 EOF
-        exit 1
-}
-
-# --- Smart copy function for different environments ---
-copy_to_clipboard() {
-        # 1. WSL check. This is reliable and should be checked first.
-        if command -v clip.exe &>/dev/null; then
-                clip.exe
-                return $?
-        fi
-
-        # 2. VS Code Dev Container OR standard VS Code SSH/Integrated terminal.
-        #    Both support OSC 52.
-        if [[ -n "$REMOTE_CONTAINERS" || "$TERM_PROGRAM" == "vscode" ]]; then
-                {
-                        printf "\033]52;c;"
-                        base64 | tr -d '\n'
-                        printf "\a"
-                } >/dev/tty
-                return 0
-        fi
-
-        # 3. Fallback for native Linux desktop environments (X11)
-        if command -v xclip &>/dev/null; then
-                xclip -selection clipboard
-                return $?
-        fi
-
-        # 4. Fallback for Wayland
-        if command -v wl-copy &>/dev/null; then
-                wl-copy
-                return $?
-        fi
-
-        echo "Error: No suitable clipboard command found." >&2
-        echo "Debug env: REMOTE_CONTAINERS='$REMOTE_CONTAINERS', TERM_PROGRAM='$TERM_PROGRAM'" >&2
-        return 1
+    exit 1
 }
 
 # --- Initial variable setup ---
@@ -83,165 +47,131 @@ USE_GITIGNORE=true
 
 # --- Argument Parsing ---
 while [[ "$#" -gt 0 ]]; do
-        case $1 in
-        --include=*) INCLUDE_SUBSTRINGS="${1#*=}" ;;
-        --exclude=*) EXCLUDE_SUBSTRINGS="${1#*=}" ;;
-        --rinclude=*) INCLUDE_REGEX="${1#*=}" ;;
-        --rexclude=*) EXCLUDE_REGEX="${1#*=}" ;;
-        --output=*) OUTPUT_FILE="${1#*=}" ;;
-        --no-gitignore) USE_GITIGNORE=false ;;
-        -h | --help) usage ;;
-        *)
-                echo "Unknown parameter passed: $1"
-                usage
-                ;;
-        esac
-        shift
+    case $1 in
+    --include=*) INCLUDE_SUBSTRINGS="${1#*=}" ;;
+    --exclude=*) EXCLUDE_SUBSTRINGS="${1#*=}" ;;
+    --rinclude=*) INCLUDE_REGEX="${1#*=}" ;;
+    --rexclude=*) EXCLUDE_REGEX="${1#*=}" ;;
+    --output=*) OUTPUT_FILE="${1#*=}" ;;
+    --no-gitignore) USE_GITIGNORE=false ;;
+    -h | --help) usage ;;
+    *)
+        echo "Unknown parameter passed: $1"
+        usage
+        ;;
+    esac
+    shift
 done
 
 # --- Validation ---
 if [[ -n "$INCLUDE_SUBSTRINGS" && -n "$INCLUDE_REGEX" ]]; then
-        echo "Error: Cannot use --include and --rinclude at the same time." >&2
-        usage
+    echo "Error: Cannot use --include and --rinclude at the same time." >&2
+    usage
 fi
 if [[ -n "$EXCLUDE_SUBSTRINGS" && -n "$EXCLUDE_REGEX" ]]; then
-        echo "Error: Cannot use --exclude and --rexclude at the same time." >&2
-        usage
+    echo "Error: Cannot use --exclude and --rexclude at the same time." >&2
+    usage
+fi
+if [[ ! -x "$CLIPBOARD_HELPER" ]]; then
+    echo "Error: Clipboard helper not found or not executable at $CLIPBOARD_HELPER" >&2
+    exit 1
 fi
 
 # --- Determine if in a git repo ---
 IS_GIT_REPO=false
 if [[ "$USE_GITIGNORE" == true ]] && git rev-parse --is-inside-work-tree &>/dev/null; then
-        IS_GIT_REPO=true
-        GIT_ROOT=$(git rev-parse --show-toplevel)
-        REPO_NAME=$(basename "$GIT_ROOT")
+    IS_GIT_REPO=true
+    GIT_ROOT=$(git rev-parse --show-toplevel)
+    REPO_NAME=$(basename "$GIT_ROOT")
 fi
 
 # --- File Discovery ---
 file_list=()
 if [[ "$IS_GIT_REPO" == true ]]; then
-        mapfile -t file_list < <(cd "$GIT_ROOT" && git ls-files -co --exclude-standard)
+    mapfile -t file_list < <(cd "$GIT_ROOT" && git ls-files -co --exclude-standard)
 else
-        mapfile -d '' file_list < <(find . -path ./.git -prune -o -type f -print0)
+    mapfile -d '' file_list < <(find . -path ./.git -prune -o -type f -print0)
 fi
 
-# --- Filtering by user arguments ---
+# --- Filtering logic (Unchanged) ---
 filtered_list=()
 for file in "${file_list[@]}"; do
-        clean_file=${file#./}
-
-        keep=true
-        if [[ -n "$INCLUDE_SUBSTRINGS" ]]; then
-                if ! echo "$clean_file" | grep -qE "$(echo "$INCLUDE_SUBSTRINGS" | sed 's/,/|/g')"; then
-                        keep=false
-                fi
-        fi
-        if [[ -n "$EXCLUDE_SUBSTRINGS" ]]; then
-                if echo "$clean_file" | grep -qE "$(echo "$EXCLUDE_SUBSTRINGS" | sed 's/,/|/g')"; then
-                        keep=false
-                fi
-        fi
-        if [[ -n "$INCLUDE_REGEX" ]]; then
-                if ! echo "$clean_file" | grep -qE "$INCLUDE_REGEX"; then
-                        keep=false
-                fi
-        fi
-        if [[ -n "$EXCLUDE_REGEX" ]]; then
-                if echo "$clean_file" | grep -qE "$EXCLUDE_REGEX"; then
-                        keep=false
-                fi
-        fi
-
-        if [[ "$keep" == true ]]; then
-                filtered_list+=("$clean_file")
-        fi
+    clean_file=${file#./}
+    keep=true
+    if [[ -n "$INCLUDE_SUBSTRINGS" ]]; then
+        if ! echo "$clean_file" | grep -qE "$(echo "$INCLUDE_SUBSTRINGS" | sed 's/,/|/g')"; then keep=false; fi
+    fi
+    if [[ -n "$EXCLUDE_SUBSTRINGS" ]]; then
+        if echo "$clean_file" | grep -qE "$(echo "$EXCLUDE_SUBSTRINGS" | sed 's/,/|/g')"; then keep=false; fi
+    fi
+    if [[ -n "$INCLUDE_REGEX" ]]; then
+        if ! echo "$clean_file" | grep -qE "$INCLUDE_REGEX"; then keep=false; fi
+    fi
+    if [[ -n "$EXCLUDE_REGEX" ]]; then
+        if echo "$clean_file" | grep -qE "$EXCLUDE_REGEX"; then keep=false; fi
+    fi
+    [[ "$keep" == true ]] && filtered_list+=("$clean_file")
 done
 
-# --- Binary File Filtering (Corrected) ---
+# --- Binary File Filtering ---
 final_list=()
 binary_files_excluded=()
 for file in "${filtered_list[@]}"; do
-        if [[ "$IS_GIT_REPO" == true ]]; then
-                full_path_for_check="$GIT_ROOT/$file"
-        else
-                full_path_for_check="$file"
-        fi
-
-        if [[ -s "$full_path_for_check" ]] && grep -Iq . "$full_path_for_check"; then
-                final_list+=("$file")
-        elif [[ ! -s "$full_path_for_check" ]]; then
-                final_list+=("$file")
-        else
-                binary_files_excluded+=("$file")
-        fi
+    full_path_for_check=$([[ "$IS_GIT_REPO" == true ]] && echo "$GIT_ROOT/$file" || echo "$file")
+    if [[ -s "$full_path_for_check" ]] && grep -Iq . "$full_path_for_check"; then
+        final_list+=("$file")
+    elif [[ ! -s "$full_path_for_check" ]]; then
+        final_list+=("$file")
+    else
+        binary_files_excluded+=("$file")
+    fi
 done
 
-# --- Content Aggregation and Formatting ---
+# --- Content Aggregation ---
 output=""
 for file in "${final_list[@]}"; do
-        if [[ "$IS_GIT_REPO" == true ]]; then
-                header="### $REPO_NAME/$file"
-                full_path_for_cat="$GIT_ROOT/$file"
-        else
-                abs_path=$(realpath "$file")
-                header="### $abs_path"
-                full_path_for_cat="$abs_path"
-        fi
+    if [[ "$IS_GIT_REPO" == true ]]; then
+        header="### $REPO_NAME/$file"
+        full_path_for_cat="$GIT_ROOT/$file"
+    else
+        header="### $(realpath "$file")"
+        full_path_for_cat="$(realpath "$file")"
+    fi
 
-        if [[ -f "$full_path_for_cat" && -r "$full_path_for_cat" ]]; then
-                output+="${header}"$'\n'
-                output+='```'$'\n'
-                output+=$(cat "$full_path_for_cat")
-                output+=$'\n''```'$'\n\n'
-        fi
+    if [[ -f "$full_path_for_cat" && -r "$full_path_for_cat" ]]; then
+        output+="${header}"$'\n'
+        output+='```'$'\n'
+        output+=$(cat "$full_path_for_cat")
+        output+=$'\n''```'$'\n\n'
+    fi
 done
 
-# --- Copy to Clipboard / Write to File and Summarize ---
+# --- Execution: Write to File or Pipe to Clipboard ---
 if [[ ${#final_list[@]} -eq 0 && ${#binary_files_excluded[@]} -eq 0 ]]; then
-        echo "No files found matching the criteria." >&2
-        exit 0
+    echo "No files found matching the criteria." >&2
+    exit 0
 fi
 
 if [[ -n "$output" ]]; then
-        if [[ -n "$OUTPUT_FILE" ]]; then
-                mkdir -p "$(dirname "$OUTPUT_FILE")" 2>/dev/null || true
-                if printf "%s" "$output" > "$OUTPUT_FILE"; then
-                        char_count=${#output}
-                        file_count=${#final_list[@]}
-                        echo "Success! Wrote $file_count file(s) (${char_count} characters) to '$OUTPUT_FILE'." >&2
-                        echo >&2
-                        echo "Included text files:" >&2
-                        mapfile -t sorted_final_list < <(printf "%s\n" "${final_list[@]}" | sort)
-                        for file in "${sorted_final_list[@]}"; do
-                                echo "- $file" >&2
-                        done
-                else
-                        echo "Error: Failed to write to '$OUTPUT_FILE'." >&2
-                        exit 1
-                fi
-        elif echo -n "$output" | copy_to_clipboard; then
-                char_count=${#output}
-                file_count=${#final_list[@]}
-
-                echo "Success! Copied $file_count file(s) (${char_count} characters) to the host clipboard." >&2
-                echo >&2
-                echo "Included text files:" >&2
-                mapfile -t sorted_final_list < <(printf "%s\n" "${final_list[@]}" | sort)
-                for file in "${sorted_final_list[@]}"; do
-                        echo "- $file" >&2
-                done
+    if [[ -n "$OUTPUT_FILE" ]]; then
+        mkdir -p "$(dirname "$OUTPUT_FILE")" 2>/dev/null || true
+        printf "%s" "$output" > "$OUTPUT_FILE"
+        echo "Success! Wrote ${#final_list[@]} file(s) to '$OUTPUT_FILE'." >&2
+    else
+        # --- THE REFACTOR: Pipe the output directly to your helper script ---
+        if printf "%s" "$output" | "$CLIPBOARD_HELPER"; then
+            echo "Success! Copied ${#final_list[@]} file(s) (${#output} chars) to the clipboard." >&2
+            echo -e "\nIncluded files:" >&2
+            printf -- "- %s\n" "${final_list[@]}" | sort >&2
         else
-                echo "Could not copy content to clipboard." >&2
+            echo "Error: Failed to copy content using $CLIPBOARD_HELPER" >&2
+            exit 1
         fi
-elif [[ ${#final_list[@]} -eq 0 ]]; then
-        echo "No text files found to copy." >&2
+    fi
 fi
 
 if [[ ${#binary_files_excluded[@]} -gt 0 ]]; then
-        echo >&2
-        echo "Excluded binary files:" >&2
-        mapfile -t sorted_binary_excluded < <(printf "%s\n" "${binary_files_excluded[@]}" | sort)
-        for file in "${sorted_binary_excluded[@]}"; do
-                echo "- $file" >&2
-        done
+    echo -e "\nExcluded binary files:" >&2
+    printf -- "- %s\n" "${binary_files_excluded[@]}" | sort >&2
 fi
+
