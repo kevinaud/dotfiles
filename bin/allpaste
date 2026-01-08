@@ -13,8 +13,8 @@ Markdown block, and copy it to the host clipboard for use with AI chatbots.
 USAGE:
     allpaste [OPTIONS]
 
-    --output=<file>        Write aggregated Markdown to <file> instead of copying
-                           to the clipboard. Parent directories will be created.
+    --output=<file>         Write aggregated Markdown to <file> instead of copying
+                            to the clipboard. Parent directories will be created.
 
 OPTIONS:
     --include=<substrings>   Comma-separated list of substrings to include in file paths.
@@ -29,6 +29,13 @@ OPTIONS:
     --rexclude=<regex>       A single regular expression to exclude file paths.
                              Example: --rexclude="/test/|/spec/"
 
+    --truncate-pattern=<substrings>
+                             Comma-separated list of substrings. Files matching these
+                             will be truncated to a set character limit.
+                             Example: --truncate-pattern=_pb.ts,.log
+
+    --truncate-limit=<num>   Number of characters to keep when truncating (Default: 1000).
+
     --no-gitignore           Disable git-awareness and .gitignore filtering.
                              Finds all files (except .git dir), even if in a git repository.
 
@@ -42,6 +49,8 @@ INCLUDE_SUBSTRINGS=""
 EXCLUDE_SUBSTRINGS=""
 INCLUDE_REGEX=""
 EXCLUDE_REGEX=""
+TRUNCATE_SUBSTRINGS=""
+TRUNCATE_LIMIT=1000
 OUTPUT_FILE=""
 USE_GITIGNORE=true
 
@@ -52,6 +61,8 @@ while [[ "$#" -gt 0 ]]; do
     --exclude=*) EXCLUDE_SUBSTRINGS="${1#*=}" ;;
     --rinclude=*) INCLUDE_REGEX="${1#*=}" ;;
     --rexclude=*) EXCLUDE_REGEX="${1#*=}" ;;
+    --truncate-pattern=*) TRUNCATE_SUBSTRINGS="${1#*=}" ;;
+    --truncate-limit=*) TRUNCATE_LIMIT="${1#*=}" ;;
     --output=*) OUTPUT_FILE="${1#*=}" ;;
     --no-gitignore) USE_GITIGNORE=false ;;
     -h | --help) usage ;;
@@ -93,7 +104,7 @@ else
     mapfile -d '' file_list < <(find . -path ./.git -prune -o -type f -print0)
 fi
 
-# --- Filtering logic (Unchanged) ---
+# --- Filtering logic ---
 filtered_list=()
 for file in "${file_list[@]}"; do
     clean_file=${file#./}
@@ -127,24 +138,75 @@ for file in "${filtered_list[@]}"; do
     fi
 done
 
-# --- Content Aggregation ---
+# --- Content Aggregation & Stats Collection ---
 output=""
+stats_data="" # Stores "size|truncated_bool|filename" per line
+total_chars=0
+
 for file in "${final_list[@]}"; do
     if [[ "$IS_GIT_REPO" == true ]]; then
         header="### $REPO_NAME/$file"
         full_path_for_cat="$GIT_ROOT/$file"
+        clean_file="$file"
     else
         header="### $(realpath "$file")"
         full_path_for_cat="$(realpath "$file")"
+        clean_file="${file#./}"
     fi
 
     if [[ -f "$full_path_for_cat" && -r "$full_path_for_cat" ]]; then
-        output+="${header}"$'\n'
-        output+='```'$'\n'
-        output+=$(cat "$full_path_for_cat")
-        output+=$'\n''```'$'\n\n'
+        # Check for truncation
+        should_truncate=false
+        if [[ -n "$TRUNCATE_SUBSTRINGS" ]]; then
+             if echo "$clean_file" | grep -qE "$(echo "$TRUNCATE_SUBSTRINGS" | sed 's/,/|/g')"; then
+                should_truncate=true
+             fi
+        fi
+
+        # Build content block
+        block="${header}"$'\n'
+        block+='```'$'\n'
+        
+        trunc_flag=""
+        if [[ "$should_truncate" == true ]]; then
+            block+=$(head -c "$TRUNCATE_LIMIT" "$full_path_for_cat")
+            block+=$'\n\n... [TRUNCATED after '$TRUNCATE_LIMIT' chars] ...'
+            trunc_flag="YES"
+        else
+            block+=$(cat "$full_path_for_cat")
+            trunc_flag=""
+        fi
+
+        block+=$'\n''```'$'\n\n'
+
+        # Append to main output
+        output+="$block"
+        
+        # Stats tracking
+        block_len=${#block}
+        ((total_chars+=block_len))
+        stats_data+="${block_len}|${trunc_flag}|${clean_file}"$'\n'
     fi
 done
+
+# --- Helper Function: Print Stats Table ---
+print_stats_table() {
+    local data="$1"
+    local total="$2"
+    
+    printf "%s" "$data" | awk -F "|" -v total="$total" '
+    BEGIN { 
+        print "------------------------------------------------------------------"
+        printf "%10s | %-5s | %6s | %s\n", "Chars", "Trunc", "%", "File" 
+        print "------------------------------------------------------------------"
+    }
+    {
+        pct = 0
+        if (total > 0) { pct = ($1 / total) * 100 }
+        printf "%10d | %-5s | %6.2f | %s\n", $1, $2, pct, $3
+    }
+    '
+}
 
 # --- Execution: Write to File or Pipe to Clipboard ---
 if [[ ${#final_list[@]} -eq 0 && ${#binary_files_excluded[@]} -eq 0 ]]; then
@@ -158,16 +220,27 @@ if [[ -n "$output" ]]; then
         printf "%s" "$output" > "$OUTPUT_FILE"
         echo "Success! Wrote ${#final_list[@]} file(s) to '$OUTPUT_FILE'." >&2
     else
-        # --- THE REFACTOR: Pipe the output directly to your helper script ---
+        # Pipe the output directly to your helper script
         if printf "%s" "$output" | "$CLIPBOARD_HELPER"; then
             echo "Success! Copied ${#final_list[@]} file(s) (${#output} chars) to the clipboard." >&2
-            echo -e "\nIncluded files:" >&2
-            printf -- "- %s\n" "${final_list[@]}" | sort >&2
         else
             echo "Error: Failed to copy content using $CLIPBOARD_HELPER" >&2
             exit 1
         fi
     fi
+
+    # --- Display Stats Reports (Always to stderr) ---
+    echo -e "\nTotal Content Size: ${total_chars} characters" >&2
+    
+    echo -e "\n=== SORTED BY SIZE (DESC) ===" >&2
+    # Sort by column 1 (numeric, desc)
+    sorted_by_size=$(printf "%s" "$stats_data" | sort -t "|" -k1,1rn)
+    print_stats_table "$sorted_by_size" "$total_chars" >&2
+
+    echo -e "\n=== SORTED BY FILENAME ===" >&2
+    # Sort by column 3 (text, asc)
+    sorted_by_name=$(printf "%s" "$stats_data" | sort -t "|" -k3)
+    print_stats_table "$sorted_by_name" "$total_chars" >&2
 fi
 
 if [[ ${#binary_files_excluded[@]} -gt 0 ]]; then
