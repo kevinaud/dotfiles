@@ -12,6 +12,7 @@ echo "Running non-interactive dotfiles installation..."
 rsync_args=(
     --exclude ".git/"
     --exclude ".DS_Store"
+    --exclude ".claude/"
     --exclude "bootstrap.sh"
     --exclude "install.sh"
     --exclude "README.md"
@@ -32,5 +33,8 @@ echo "Syncing dotfiles to the home directory..."
 
 # Execute rsync, expanding the array of arguments safely.
 rsync "${rsync_args[@]}" . ~
+
+# Setup Claude Code configuration
+./scripts/setup-claude.sh
 
 echo "Dotfiles installation complete."

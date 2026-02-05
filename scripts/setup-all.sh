@@ -9,6 +9,7 @@ scripts=(
 	"${SCRIPT_DIR}/apt-install.sh"
 	"${SCRIPT_DIR}/setup-github-wsl.sh"
 	"${SCRIPT_DIR}/setup-dev.sh"
+	"${SCRIPT_DIR}/setup-claude.sh"
 )
 
 for script in "${scripts[@]}"; do
