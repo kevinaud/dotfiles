@@ -104,43 +104,54 @@ else
     mapfile -d '' file_list < <(find . -path ./.git -prune -o -type f -print0)
 fi
 
-# --- Filtering logic ---
+# --- Pre-compute regex patterns (avoid repeated sed calls) ---
+INCLUDE_PATTERN=""
+EXCLUDE_PATTERN=""
+TRUNCATE_PATTERN=""
+[[ -n "$INCLUDE_SUBSTRINGS" ]] && INCLUDE_PATTERN="${INCLUDE_SUBSTRINGS//,/|}"
+[[ -n "$EXCLUDE_SUBSTRINGS" ]] && EXCLUDE_PATTERN="${EXCLUDE_SUBSTRINGS//,/|}"
+[[ -n "$TRUNCATE_SUBSTRINGS" ]] && TRUNCATE_PATTERN="${TRUNCATE_SUBSTRINGS//,/|}"
+
+# --- Filtering logic (use bash built-in regex, no subprocess per file) ---
 filtered_list=()
 for file in "${file_list[@]}"; do
     clean_file=${file#./}
     keep=true
-    if [[ -n "$INCLUDE_SUBSTRINGS" ]]; then
-        if ! echo "$clean_file" | grep -qE "$(echo "$INCLUDE_SUBSTRINGS" | sed 's/,/|/g')"; then keep=false; fi
+    if [[ -n "$INCLUDE_PATTERN" && ! "$clean_file" =~ $INCLUDE_PATTERN ]]; then
+        keep=false
     fi
-    if [[ -n "$EXCLUDE_SUBSTRINGS" ]]; then
-        if echo "$clean_file" | grep -qE "$(echo "$EXCLUDE_SUBSTRINGS" | sed 's/,/|/g')"; then keep=false; fi
+    if [[ -n "$EXCLUDE_PATTERN" && "$clean_file" =~ $EXCLUDE_PATTERN ]]; then
+        keep=false
     fi
-    if [[ -n "$INCLUDE_REGEX" ]]; then
-        if ! echo "$clean_file" | grep -qE "$INCLUDE_REGEX"; then keep=false; fi
+    if [[ -n "$INCLUDE_REGEX" && ! "$clean_file" =~ $INCLUDE_REGEX ]]; then
+        keep=false
     fi
-    if [[ -n "$EXCLUDE_REGEX" ]]; then
-        if echo "$clean_file" | grep -qE "$EXCLUDE_REGEX"; then keep=false; fi
+    if [[ -n "$EXCLUDE_REGEX" && "$clean_file" =~ $EXCLUDE_REGEX ]]; then
+        keep=false
     fi
     [[ "$keep" == true ]] && filtered_list+=("$clean_file")
 done
 
-# --- Binary File Filtering ---
+# --- Binary File Filtering (use file command, much faster than grep -I) ---
 final_list=()
 binary_files_excluded=()
 for file in "${filtered_list[@]}"; do
     full_path_for_check=$([[ "$IS_GIT_REPO" == true ]] && echo "$GIT_ROOT/$file" || echo "$file")
-    if [[ -s "$full_path_for_check" ]] && grep -Iq . "$full_path_for_check"; then
+    if [[ ! -s "$full_path_for_check" ]]; then
+        # Empty file - include it
         final_list+=("$file")
-    elif [[ ! -s "$full_path_for_check" ]]; then
+    elif [[ "$(file -b --mime-encoding "$full_path_for_check" 2>/dev/null)" != "binary" ]]; then
+        # Text file - include it
         final_list+=("$file")
     else
         binary_files_excluded+=("$file")
     fi
 done
 
-# --- Content Aggregation & Stats Collection ---
-output=""
-stats_data="" # Stores "size|truncated_bool|filename" per line
+# --- Content Aggregation & Stats Collection (use temp file to avoid O(n²) string concat) ---
+OUTPUT_TMPFILE=$(mktemp)
+STATS_TMPFILE=$(mktemp)
+trap 'rm -f "$OUTPUT_TMPFILE" "$STATS_TMPFILE"' EXIT
 total_chars=0
 
 for file in "${final_list[@]}"; do
@@ -155,37 +166,33 @@ for file in "${final_list[@]}"; do
     fi
 
     if [[ -f "$full_path_for_cat" && -r "$full_path_for_cat" ]]; then
-        # Check for truncation
+        # Check for truncation (use bash built-in regex)
         should_truncate=false
-        if [[ -n "$TRUNCATE_SUBSTRINGS" ]]; then
-             if echo "$clean_file" | grep -qE "$(echo "$TRUNCATE_SUBSTRINGS" | sed 's/,/|/g')"; then
-                should_truncate=true
-             fi
+        if [[ -n "$TRUNCATE_PATTERN" && "$clean_file" =~ $TRUNCATE_PATTERN ]]; then
+            should_truncate=true
         fi
 
-        # Build content block
-        block="${header}"$'\n'
-        block+='```'$'\n'
-        
+        # Write content block directly to temp file (avoid string concat)
+        block_start=$(stat -c%s "$OUTPUT_TMPFILE" 2>/dev/null || echo 0)
+
+        printf '%s\n```\n' "$header" >> "$OUTPUT_TMPFILE"
+
         trunc_flag=""
         if [[ "$should_truncate" == true ]]; then
-            block+=$(head -c "$TRUNCATE_LIMIT" "$full_path_for_cat")
-            block+=$'\n\n... [TRUNCATED after '$TRUNCATE_LIMIT' chars] ...'
+            head -c "$TRUNCATE_LIMIT" "$full_path_for_cat" >> "$OUTPUT_TMPFILE"
+            printf '\n\n... [TRUNCATED after %s chars] ...' "$TRUNCATE_LIMIT" >> "$OUTPUT_TMPFILE"
             trunc_flag="YES"
         else
-            block+=$(cat "$full_path_for_cat")
-            trunc_flag=""
+            cat "$full_path_for_cat" >> "$OUTPUT_TMPFILE"
         fi
 
-        block+=$'\n''```'$'\n\n'
+        printf '\n```\n\n' >> "$OUTPUT_TMPFILE"
 
-        # Append to main output
-        output+="$block"
-        
         # Stats tracking
-        block_len=${#block}
+        block_end=$(stat -c%s "$OUTPUT_TMPFILE")
+        block_len=$((block_end - block_start))
         ((total_chars+=block_len))
-        stats_data+="${block_len}|${trunc_flag}|${clean_file}"$'\n'
+        printf '%s|%s|%s\n' "$block_len" "$trunc_flag" "$clean_file" >> "$STATS_TMPFILE"
     fi
 done
 
@@ -214,15 +221,16 @@ if [[ ${#final_list[@]} -eq 0 && ${#binary_files_excluded[@]} -eq 0 ]]; then
     exit 0
 fi
 
-if [[ -n "$output" ]]; then
+output_size=$(stat -c%s "$OUTPUT_TMPFILE" 2>/dev/null || echo 0)
+if [[ "$output_size" -gt 0 ]]; then
     if [[ -n "$OUTPUT_FILE" ]]; then
         mkdir -p "$(dirname "$OUTPUT_FILE")" 2>/dev/null || true
-        printf "%s" "$output" > "$OUTPUT_FILE"
+        cp "$OUTPUT_TMPFILE" "$OUTPUT_FILE"
         echo "Success! Wrote ${#final_list[@]} file(s) to '$OUTPUT_FILE'." >&2
     else
         # Pipe the output directly to your helper script
-        if printf "%s" "$output" | "$CLIPBOARD_HELPER"; then
-            echo "Success! Copied ${#final_list[@]} file(s) (${#output} chars) to the clipboard." >&2
+        if "$CLIPBOARD_HELPER" < "$OUTPUT_TMPFILE"; then
+            echo "Success! Copied ${#final_list[@]} file(s) (${output_size} chars) to the clipboard." >&2
         else
             echo "Error: Failed to copy content using $CLIPBOARD_HELPER" >&2
             exit 1
@@ -231,15 +239,15 @@ if [[ -n "$output" ]]; then
 
     # --- Display Stats Reports (Always to stderr) ---
     echo -e "\nTotal Content Size: ${total_chars} characters" >&2
-    
+
     echo -e "\n=== SORTED BY SIZE (DESC) ===" >&2
     # Sort by column 1 (numeric, desc)
-    sorted_by_size=$(printf "%s" "$stats_data" | sort -t "|" -k1,1rn)
+    sorted_by_size=$(sort -t "|" -k1,1rn "$STATS_TMPFILE")
     print_stats_table "$sorted_by_size" "$total_chars" >&2
 
     echo -e "\n=== SORTED BY FILENAME ===" >&2
     # Sort by column 3 (text, asc)
-    sorted_by_name=$(printf "%s" "$stats_data" | sort -t "|" -k3)
+    sorted_by_name=$(sort -t "|" -k3 "$STATS_TMPFILE")
     print_stats_table "$sorted_by_name" "$total_chars" >&2
 fi
 
