@@ -94,12 +94,16 @@ if [[ "$USE_GITIGNORE" == true ]] && git rev-parse --is-inside-work-tree &>/dev/
     IS_GIT_REPO=true
     GIT_ROOT=$(git rev-parse --show-toplevel)
     REPO_NAME=$(basename "$GIT_ROOT")
+    # Relative path from repo root to CWD (e.g., "packages/coino-api/")
+    CWD_PREFIX=$(git rev-parse --show-prefix)
+    # Strip trailing slash if present
+    CWD_PREFIX="${CWD_PREFIX%/}"
 fi
 
 # --- File Discovery ---
 file_list=()
 if [[ "$IS_GIT_REPO" == true ]]; then
-    mapfile -t file_list < <(cd "$GIT_ROOT" && git ls-files -co --exclude-standard)
+    mapfile -t file_list < <(git ls-files -co --exclude-standard)
 else
     mapfile -d '' file_list < <(find . -path ./.git -prune -o -type f -print0)
 fi
@@ -136,7 +140,7 @@ done
 final_list=()
 binary_files_excluded=()
 for file in "${filtered_list[@]}"; do
-    full_path_for_check=$([[ "$IS_GIT_REPO" == true ]] && echo "$GIT_ROOT/$file" || echo "$file")
+    full_path_for_check="$file"
     if [[ ! -s "$full_path_for_check" ]]; then
         # Empty file - include it
         final_list+=("$file")
@@ -156,8 +160,13 @@ total_chars=0
 
 for file in "${final_list[@]}"; do
     if [[ "$IS_GIT_REPO" == true ]]; then
-        header="### $REPO_NAME/$file"
-        full_path_for_cat="$GIT_ROOT/$file"
+        # Build header as repo-root-relative path
+        if [[ -n "$CWD_PREFIX" ]]; then
+            header="### $REPO_NAME/$CWD_PREFIX/$file"
+        else
+            header="### $REPO_NAME/$file"
+        fi
+        full_path_for_cat="$file"
         clean_file="$file"
     else
         header="### $(realpath "$file")"
