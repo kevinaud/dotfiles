@@ -1,0 +1,37 @@
+{
+  "skills": {
+    "/home/vscode/.claude/skills/allpaste-script-creator": "allpaste-script-creator",
+    "/home/vscode/.claude/skills/find-skills": "find-skills",
+    "/home/vscode/.claude/skills/firecrawl": "firecrawl",
+    "/home/vscode/.claude/skills/git-town": "git-town",
+    "/home/vscode/.claude/skills/just": "just",
+    "/home/vscode/.claude/skills/skill-creator": "claude-skill-creator"
+  },
+  "version": 1,
+  "workflow_skills": {
+    "/home/vscode/.claude/get-shit-done/workflows/add-phase.md": "gsd-add-phase",
+    "/home/vscode/.claude/get-shit-done/workflows/audit-milestone.md": "gsd-audit-milestone",
+    "/home/vscode/.claude/get-shit-done/workflows/check-todos.md": "gsd-check-todos",
+    "/home/vscode/.claude/get-shit-done/workflows/complete-milestone.md": "gsd-complete-milestone",
+    "/home/vscode/.claude/get-shit-done/workflows/diagnose-issues.md": "gsd-diagnose-issues",
+    "/home/vscode/.claude/get-shit-done/workflows/discovery-phase.md": "gsd-discovery-phase",
+    "/home/vscode/.claude/get-shit-done/workflows/discuss-phase.md": "gsd-discuss-phase",
+    "/home/vscode/.claude/get-shit-done/workflows/execute-phase.md": "gsd-execute-phase",
+    "/home/vscode/.claude/get-shit-done/workflows/execute-plan.md": "gsd-execute-plan",
+    "/home/vscode/.claude/get-shit-done/workflows/insert-phase.md": "gsd-insert-phase",
+    "/home/vscode/.claude/get-shit-done/workflows/list-phase-assumptions.md": "gsd-list-phase-assumptions",
+    "/home/vscode/.claude/get-shit-done/workflows/map-codebase.md": "gsd-map-codebase",
+    "/home/vscode/.claude/get-shit-done/workflows/new-milestone.md": "gsd-new-milestone",
+    "/home/vscode/.claude/get-shit-done/workflows/plan-milestone-gaps.md": "gsd-plan-milestone-gaps",
+    "/home/vscode/.claude/get-shit-done/workflows/plan-phase.md": "gsd-plan-phase",
+    "/home/vscode/.claude/get-shit-done/workflows/progress.md": "gsd-progress",
+    "/home/vscode/.claude/get-shit-done/workflows/quick.md": "gsd-quick",
+    "/home/vscode/.claude/get-shit-done/workflows/remove-phase.md": "gsd-remove-phase",
+    "/home/vscode/.claude/get-shit-done/workflows/research-phase.md": "gsd-research-phase",
+    "/home/vscode/.claude/get-shit-done/workflows/resume-project.md": "gsd-resume-project",
+    "/home/vscode/.claude/get-shit-done/workflows/transition.md": "gsd-transition",
+    "/home/vscode/.claude/get-shit-done/workflows/update.md": "gsd-update",
+    "/home/vscode/.claude/get-shit-done/workflows/verify-phase.md": "gsd-verify-phase",
+    "/home/vscode/.claude/get-shit-done/workflows/verify-work.md": "gsd-verify-work"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "agents": {
+    "/home/vscode/.claude/agents/code-simplifier.md": "code-simplifier",
+    "/home/vscode/.claude/agents/gsd-codebase-mapper.md": "gsd-codebase-mapper",
+    "/home/vscode/.claude/agents/gsd-debugger.md": "gsd-debugger",
+    "/home/vscode/.claude/agents/gsd-executor.md": "gsd-executor",
+    "/home/vscode/.claude/agents/gsd-integration-checker.md": "gsd-integration-checker",
+    "/home/vscode/.claude/agents/gsd-phase-researcher.md": "gsd-phase-researcher",
+    "/home/vscode/.claude/agents/gsd-plan-checker.md": "gsd-plan-checker",
+    "/home/vscode/.claude/agents/gsd-planner.md": "gsd-planner",
+    "/home/vscode/.claude/agents/gsd-project-researcher.md": "gsd-project-researcher",
+    "/home/vscode/.claude/agents/gsd-research-synthesizer.md": "gsd-research-synthesizer",
+    "/home/vscode/.claude/agents/gsd-roadmapper.md": "gsd-roadmapper",
+    "/home/vscode/.claude/agents/gsd-verifier.md": "gsd-verifier"
+  },
+  "version": 1
+}
