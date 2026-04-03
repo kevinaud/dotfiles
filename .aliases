@@ -81,3 +81,5 @@ alias path='echo -e ${PATH//:/\\n}'
 
 alias claude-skip="claude --dangerously-skip-permissions"
 
+alias codex-skip="codex --dangerously-bypass-approvals-and-sandbox"
+
